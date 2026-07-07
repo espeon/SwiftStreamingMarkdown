@@ -5,7 +5,6 @@
 
 import Foundation
 import SwiftUI
-import Equatable
 
 /// This is a view that is able to both parse and render markdown with default configuration.
 /// Use this view instead of `DocumentView` if you don't want to perform the parsing yourself.

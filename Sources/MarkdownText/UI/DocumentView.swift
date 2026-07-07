@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import Equatable
 import Markdown
 import SwiftUI
 

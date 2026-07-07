@@ -5,7 +5,6 @@
 
 import Foundation
 import SwiftUI
-import Equatable
 
 /// A source of incremental Markdown text for `StreamedMarkdownView`.
 ///
