@@ -21,8 +21,11 @@ public protocol StreamedMarkdownSource {
 /// Provide a `StreamedMarkdownSource` whose `text` async sequence yields
 /// progressively larger snapshots of the Markdown source; the view re-parses
 /// on each emission and refreshes the rendered output.
-@Equatable
-public struct StreamedMarkdownView: View {
+
+public struct StreamedMarkdownView: View, Equatable {
+  public static func == (lhs: StreamedMarkdownView, rhs: StreamedMarkdownView) -> Bool {
+    lhs.config == rhs.config
+  }
 
   private let config: MarkdownRenderConfig
   @StateObject private var controller: StreamedMarkdownController

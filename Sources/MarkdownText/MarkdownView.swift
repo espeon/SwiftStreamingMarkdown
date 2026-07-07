@@ -9,8 +9,11 @@ import Equatable
 
 /// This is a view that is able to both parse and render markdown with default configuration.
 /// Use this view instead of `DocumentView` if you don't want to perform the parsing yourself.
-@Equatable
-public struct MarkdownView: View {
+
+public struct MarkdownView: View, Equatable {
+  public static func == (lhs: MarkdownView, rhs: MarkdownView) -> Bool {
+    lhs.text == rhs.text && lhs.config == rhs.config
+  }
 
   private let text: String
   private let config: MarkdownRenderConfig
