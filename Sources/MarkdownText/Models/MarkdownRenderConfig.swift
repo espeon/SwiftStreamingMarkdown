@@ -19,6 +19,8 @@ public struct MarkdownRenderConfig: Hashable, Sendable {
     case none
     /// Fade newly appended text without changing its release cadence.
     case fade
+    /// Fade newly appended text with a shorter reveal duration.
+    case fastFade
     /// Buffer attributed text and release one composed character at a time.
     case characterStreaming
   }

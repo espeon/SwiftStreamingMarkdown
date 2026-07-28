@@ -173,7 +173,7 @@ class ParagraphNSView: NSTextView {
       activeAnimation = nil
       tearDownDisplayLink()
       textStorage?.setAttributedString(finalString)
-    case .fade:
+    case .fade, .fastFade:
       stopCharacterStreaming()
       guard contentsChanged || modeChanged else {
         invalidateIntrinsicContentSize()
@@ -183,7 +183,8 @@ class ParagraphNSView: NSTextView {
       let revealPlan = contentsChanged
         ? ParagraphRevealPlan.appendedText(
           previousText: previousText,
-          newText: finalString.string
+          newText: finalString.string,
+          animation: textAnimation
         )
         : nil
       guard let revealPlan else {
@@ -198,7 +199,8 @@ class ParagraphNSView: NSTextView {
         plan: revealPlan,
         startTime: currentTime,
         previousAnimation: previousAnimation,
-        contentLength: finalString.length
+        contentLength: finalString.length,
+        animation: textAnimation
       )
       updateTextViewWithCurrentAnimations(at: currentTime)
       setUpDisplayLink()
@@ -323,7 +325,7 @@ class ParagraphNSView: NSTextView {
     switch textAnimation {
     case .none:
       tearDownDisplayLink()
-    case .fade:
+    case .fade, .fastFade:
       guard let activeAnimation else {
         tearDownDisplayLink()
         return
@@ -353,7 +355,7 @@ class ParagraphNSView: NSTextView {
         continue
       }
       let elapsed = currentTime - segment.startTime
-      let progress = min(max(elapsed / ParagraphAnimationConstants.fadeInDuration, 0), 1)
+      let progress = min(max(elapsed / activeAnimation.duration, 0), 1)
       applyRevealProgress(paragraphEaseOut(progress), to: segment.range)
     }
   }

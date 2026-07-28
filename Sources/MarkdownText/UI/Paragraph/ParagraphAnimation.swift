@@ -8,6 +8,8 @@ import Foundation
 enum ParagraphAnimationConstants {
   static let fadeInDuration: CFTimeInterval = 0.45
   static let fadeStaggerDuration: CFTimeInterval = 0.12
+  static let fastFadeInDuration: CFTimeInterval = 0.16
+  static let fastFadeStaggerDuration: CFTimeInterval = 0.04
   static let fadeTargetSegmentLength = 8
   static let maximumFadeSegmentCount = 24
 
@@ -24,6 +26,26 @@ enum ParagraphAnimationConstants {
   static let initialCharacterBlurRadius: CGFloat = 2
 }
 
+private extension MarkdownRenderConfig.TextAnimation {
+  var fadeInDuration: CFTimeInterval {
+    switch self {
+    case .fastFade:
+      ParagraphAnimationConstants.fastFadeInDuration
+    default:
+      ParagraphAnimationConstants.fadeInDuration
+    }
+  }
+
+  var fadeStaggerDuration: CFTimeInterval {
+    switch self {
+    case .fastFade:
+      ParagraphAnimationConstants.fastFadeStaggerDuration
+    default:
+      ParagraphAnimationConstants.fadeStaggerDuration
+    }
+  }
+}
+
 struct ParagraphSizeCacheKey: Hashable {
   let width: CGFloat
   let visibleUTF16Length: Int
@@ -38,7 +60,11 @@ struct ParagraphRevealPlan: Equatable {
   let segments: [ParagraphRevealSegment]
   let duration: CFTimeInterval
 
-  static func appendedText(previousText: String, newText: String) -> ParagraphRevealPlan? {
+  static func appendedText(
+    previousText: String,
+    newText: String,
+    animation: MarkdownRenderConfig.TextAnimation = .fade
+  ) -> ParagraphRevealPlan? {
     let previous = previousText as NSString
     let updated = newText as NSString
 
@@ -71,12 +97,12 @@ struct ParagraphRevealPlan: Equatable {
       segmentCount: segmentCount
     )
     let delayStep = ranges.count > 1
-      ? ParagraphAnimationConstants.fadeStaggerDuration / Double(ranges.count - 1)
+      ? animation.fadeStaggerDuration / Double(ranges.count - 1)
       : 0
     let segments = ranges.enumerated().map { index, range in
       ParagraphRevealSegment(range: range, delay: Double(index) * delayStep)
     }
-    let duration = (segments.last?.delay ?? 0) + ParagraphAnimationConstants.fadeInDuration
+    let duration = (segments.last?.delay ?? 0) + animation.fadeInDuration
     return ParagraphRevealPlan(segments: segments, duration: duration)
   }
 
@@ -119,16 +145,21 @@ struct FadeAnimationSegment {
 
 struct FadeAnimationData {
   let segments: [FadeAnimationSegment]
+  let duration: CFTimeInterval
 
   init(
     plan: ParagraphRevealPlan,
     startTime: CFTimeInterval,
     previousAnimation: FadeAnimationData? = nil,
-    contentLength: Int
+    contentLength: Int,
+    animation: MarkdownRenderConfig.TextAnimation = .fade
   ) {
-    let unfinishedSegments = previousAnimation?.segments.filter {
-      startTime < $0.startTime + ParagraphAnimationConstants.fadeInDuration
-        && NSMaxRange($0.range) <= contentLength
+    duration = animation.fadeInDuration
+    let unfinishedSegments = previousAnimation.map { previous in
+      previous.segments.filter {
+        startTime < $0.startTime + previous.duration
+          && NSMaxRange($0.range) <= contentLength
+      }
     } ?? []
     let appendedSegments = plan.segments.map {
       FadeAnimationSegment(range: $0.range, startTime: startTime + $0.delay)
@@ -140,7 +171,7 @@ struct FadeAnimationData {
   }
 
   var endTime: CFTimeInterval {
-    (segments.map(\.startTime).max() ?? 0) + ParagraphAnimationConstants.fadeInDuration
+    (segments.map(\.startTime).max() ?? 0) + duration
   }
 }
 

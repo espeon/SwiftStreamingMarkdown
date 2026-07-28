@@ -205,6 +205,7 @@ struct ParagraphAnimationTests {
         == .none
     )
     #expect(resolvedTextAnimation(.fade, reduceMotion: true) == .none)
+    #expect(resolvedTextAnimation(.fastFade, reduceMotion: true) == .none)
   }
 
   @Test("Completion drains the withheld terminal grapheme")
@@ -371,10 +372,12 @@ struct ParagraphAnimationTests {
       textAnimation: .characterStreaming
     )
     let fade = characterStreaming.withTextAnimation(.fade)
+    let fastFade = characterStreaming.withTextAnimation(.fastFade)
 
     #expect(MarkdownRenderConfig.default.textAnimation == .none)
     #expect(characterStreaming.textAnimation == .characterStreaming)
     #expect(fade.textAnimation == .fade)
+    #expect(fastFade.textAnimation == .fastFade)
   }
 
   @Test("Standard fade still targets only appended content")
@@ -396,6 +399,34 @@ struct ParagraphAnimationTests {
       plan.segments.last?.delay
         == ParagraphAnimationConstants.fadeStaggerDuration
     )
+  }
+
+  @Test("Fast fade settles sooner than standard fade")
+  func fastFadeAppend() throws {
+    let previous = "Stable text"
+    let updated = "\(previous) fades in"
+    let standardPlan = try #require(
+      ParagraphRevealPlan.appendedText(
+        previousText: previous,
+        newText: updated,
+        animation: .fade
+      )
+    )
+    let fastPlan = try #require(
+      ParagraphRevealPlan.appendedText(
+        previousText: previous,
+        newText: updated,
+        animation: .fastFade
+      )
+    )
+
+    #expect(fastPlan.duration < standardPlan.duration)
+    #expect(
+      fastPlan.duration
+        == ParagraphAnimationConstants.fastFadeInDuration
+          + ParagraphAnimationConstants.fastFadeStaggerDuration
+    )
+    #expect(fastPlan.segments.last?.delay == ParagraphAnimationConstants.fastFadeStaggerDuration)
   }
 
   @Test("Visible prefix length participates in paragraph size caching")

@@ -189,7 +189,7 @@ class ParagraphUIView: UITextView {
     switch textAnimation {
     case .none:
       break
-    case .fade:
+    case .fade, .fastFade:
       stopCharacterStreaming()
       guard contentsChanged || modeChanged else {
         invalidateIntrinsicContentSize()
@@ -199,7 +199,8 @@ class ParagraphUIView: UITextView {
       let revealPlan = contentsChanged
         ? ParagraphRevealPlan.appendedText(
           previousText: previousText,
-          newText: finalString.string
+          newText: finalString.string,
+          animation: textAnimation
         )
         : nil
       guard let revealPlan else {
@@ -214,7 +215,8 @@ class ParagraphUIView: UITextView {
         plan: revealPlan,
         startTime: currentTime,
         previousAnimation: previousAnimation,
-        contentLength: finalString.length
+        contentLength: finalString.length,
+        animation: textAnimation
       )
       updateTextViewWithCurrentAnimations(at: currentTime)
       setUpDisplayLink()
@@ -392,7 +394,7 @@ class ParagraphUIView: UITextView {
     switch textAnimation {
     case .none:
       tearDownDisplayLink()
-    case .fade:
+    case .fade, .fastFade:
       guard let activeAnimation else {
         tearDownDisplayLink()
         return
@@ -421,7 +423,7 @@ class ParagraphUIView: UITextView {
         continue
       }
       let elapsed = currentTime - segment.startTime
-      let progress = min(max(elapsed / ParagraphAnimationConstants.fadeInDuration, 0), 1)
+      let progress = min(max(elapsed / activeAnimation.duration, 0), 1)
       applyRevealProgress(paragraphEaseOut(progress), to: segment.range)
     }
   }
