@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ordo-one/equatable",
       "state" : {
-        "revision" : "63e597c07e1e0622e6c8f2b33c972525a444c8eb",
-        "version" : "1.0.10"
+        "revision" : "d110ff55fe01b88fff1dab6bd9b659afa9a6c6ef",
+        "version" : "1.1.0"
       }
     },
     {
@@ -66,8 +66,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "0687f71944021d616d34d922343dcef086855920",
-        "version" : "600.0.1"
+        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
+        "version" : "602.0.0"
       }
     },
     {
