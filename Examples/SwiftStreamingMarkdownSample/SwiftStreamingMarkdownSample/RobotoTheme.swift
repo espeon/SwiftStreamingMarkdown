@@ -77,7 +77,7 @@ enum RobotoTheme {
   // MARK: - Config
 
   static let renderConfig: MarkdownRenderConfig = MarkdownRenderConfig(
-    shouldAnimateText: false,
+    textAnimation: .none,
     blockQuoteStyle: .init(
       textFonts: textFonts(size: 16, lineHeight: 24),
       textColor: mutedForeground
@@ -122,6 +122,15 @@ enum RobotoTheme {
       font: roboto(12, weight: "Medium"),
       textColor: pageForeground,
       backgroundColor: accentSoft
-    )
+    ),
+    codeBlockConfig: .init(
+      theme: .atomOne,
+      backgroundColor: .dynamic(
+        light: Color(red: 0.980, green: 0.980, blue: 0.980),
+        dark: Color(red: 0.157, green: 0.173, blue: 0.204)
+      )
+    ),
+    textSelectionConfig: .init(backgroundColor: pageBackground),
+    thematicBreakColor: tableBorder
   )
 }

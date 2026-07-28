@@ -4,12 +4,13 @@
 //
 
 import Foundation
+import SwiftUI
 
 extension MarkdownRenderConfig {
-  /// Returns a copy with `shouldAnimateText` replaced.
-  public func withShouldAnimateText(value: Bool) -> MarkdownRenderConfig {
+  /// Returns a copy with `textAnimation` replaced.
+  public func withTextAnimation(_ value: TextAnimation) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: value,
+      textAnimation: value,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -18,14 +19,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `blockQuoteStyle` replaced.
   public func withBlockQuoteStyle(value: MarkdownTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: value,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -34,14 +39,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `headingStyle` replaced.
   public func withHeadingStyle(value: MarkdownHeadingTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: value,
       orderedListStyle: orderedListStyle,
@@ -50,14 +59,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `orderedListStyle` replaced.
   public func withOrderedListStyle(value: MarkdownTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: value,
@@ -66,14 +79,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `paragraphStyle` replaced.
   public func withParagraphStyle(value: MarkdownTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -82,14 +99,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `tableStyle` replaced.
   public func withTableStyle(value: MarkdownTableTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -98,14 +119,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `inlineStyle` replaced.
   public func withInlineStyle(value: MarkdownInlineTextStyle) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -114,7 +139,11 @@ extension MarkdownRenderConfig {
       inlineStyle: value,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
@@ -122,7 +151,7 @@ extension MarkdownRenderConfig {
   /// custom context menu and fall back to the system menu.
   public func withTextContextMenu(value: TextContextMenu?) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -131,14 +160,18 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: value,
       citationConfig: citationConfig,
-      blockSpacing: blockSpacing
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
     )
   }
 
   /// Returns a copy with `blockSpacing` replaced.
   public func withBlockSpacing(value: CGFloat) -> MarkdownRenderConfig {
     MarkdownRenderConfig(
-      shouldAnimateText: shouldAnimateText,
+      textAnimation: textAnimation,
       blockQuoteStyle: blockQuoteStyle,
       headingStyle: headingStyle,
       orderedListStyle: orderedListStyle,
@@ -147,7 +180,92 @@ extension MarkdownRenderConfig {
       inlineStyle: inlineStyle,
       textContextMenu: textContextMenu,
       citationConfig: citationConfig,
-      blockSpacing: value
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: value,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
+    )
+  }
+
+  /// Returns a copy with `codeBlockConfig` replaced.
+  public func withCodeBlockConfig(value: CodeBlockConfig) -> MarkdownRenderConfig {
+    MarkdownRenderConfig(
+      textAnimation: textAnimation,
+      blockQuoteStyle: blockQuoteStyle,
+      headingStyle: headingStyle,
+      orderedListStyle: orderedListStyle,
+      paragraphStyle: paragraphStyle,
+      tableStyle: tableStyle,
+      inlineStyle: inlineStyle,
+      textContextMenu: textContextMenu,
+      citationConfig: citationConfig,
+      codeBlockConfig: value,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
+    )
+  }
+
+  /// Returns a copy with `textSelectionConfig` replaced. Pass a config with
+  /// `isEnabled: false` to hide the built-in "Select more text" edit-menu action.
+  public func withTextSelectionConfig(value: TextSelectionConfig) -> MarkdownRenderConfig {
+    MarkdownRenderConfig(
+      textAnimation: textAnimation,
+      blockQuoteStyle: blockQuoteStyle,
+      headingStyle: headingStyle,
+      orderedListStyle: orderedListStyle,
+      paragraphStyle: paragraphStyle,
+      tableStyle: tableStyle,
+      inlineStyle: inlineStyle,
+      textContextMenu: textContextMenu,
+      citationConfig: citationConfig,
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: value,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: imageConfig
+    )
+  }
+
+  /// Returns a copy with `thematicBreakColor` replaced.
+  public func withThematicBreakColor(value: Color) -> MarkdownRenderConfig {
+    MarkdownRenderConfig(
+      textAnimation: textAnimation,
+      blockQuoteStyle: blockQuoteStyle,
+      headingStyle: headingStyle,
+      orderedListStyle: orderedListStyle,
+      paragraphStyle: paragraphStyle,
+      tableStyle: tableStyle,
+      inlineStyle: inlineStyle,
+      textContextMenu: textContextMenu,
+      citationConfig: citationConfig,
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: value,
+      imageConfig: imageConfig
+    )
+  }
+
+  /// Returns a copy with `imageConfig` replaced. Image support is experimental.
+  public func withImageConfig(_ value: ImageConfig) -> MarkdownRenderConfig {
+    MarkdownRenderConfig(
+      textAnimation: textAnimation,
+      blockQuoteStyle: blockQuoteStyle,
+      headingStyle: headingStyle,
+      orderedListStyle: orderedListStyle,
+      paragraphStyle: paragraphStyle,
+      tableStyle: tableStyle,
+      inlineStyle: inlineStyle,
+      textContextMenu: textContextMenu,
+      citationConfig: citationConfig,
+      codeBlockConfig: codeBlockConfig,
+      blockSpacing: blockSpacing,
+      textSelectionConfig: textSelectionConfig,
+      thematicBreakColor: thematicBreakColor,
+      imageConfig: value
     )
   }
 }

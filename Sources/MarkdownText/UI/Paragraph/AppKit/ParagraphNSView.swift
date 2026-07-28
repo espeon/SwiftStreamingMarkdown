@@ -17,28 +17,36 @@ private struct CachedParagraphNSViewSize {
 
 class ParagraphNSView: NSTextView {
   private static let jsonEncoder = JSONEncoder()
-  static let animationDuration: CFTimeInterval = ParagraphAnimationConstants.fadeInDuration
 
   private(set) var paragraphContents: NSMutableAttributedString = NSMutableAttributedString()
   private(set) var lineSpacing: CGFloat?
-  private var activeAnimations: [FadeAnimationData] = []
-  private var fadeAnimationDisplayLink: CADisplayLink?
+  private var finalAttributedText = NSAttributedString()
+  private var activeAnimation: FadeAnimationData?
+  private let characterStreamingState = CharacterStreamingState()
+  private var characterStreamingTimer: Timer?
+  private var textAnimationDisplayLink: CADisplayLink?
+  private var textAnimation: MarkdownRenderConfig.TextAnimation = .none
+  private var isStreamComplete = true
   private var cachedSize: CachedParagraphNSViewSize?
 
+  private(set) var supportsCharacterStreaming = false
   var textContextMenu: TextContextMenu?
   var markdownController: MarkdownController?
 
   var onUrlTap: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
-  convenience init() {
+  convenience init(characterStreaming: Bool = false) {
     let textStorage = NSTextStorage()
-    let layoutManager = NSLayoutManager()
+    let layoutManager = characterStreaming
+      ? CharacterStreamingLayoutManager()
+      : NSLayoutManager()
     textStorage.addLayoutManager(layoutManager)
     let textContainer = NSTextContainer(containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
     textContainer.widthTracksTextView = true
     textContainer.heightTracksTextView = false
     layoutManager.addTextContainer(textContainer)
     self.init(frame: .zero, textContainer: textContainer)
+    supportsCharacterStreaming = characterStreaming
   }
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
@@ -53,7 +61,8 @@ class ParagraphNSView: NSTextView {
 
   deinit {
     tearDownDisplayLink()
-    activeAnimations.removeAll()
+    characterStreamingTimer?.invalidate()
+    activeAnimation = nil
   }
 
   // MARK: - Appearance
@@ -61,6 +70,13 @@ class ParagraphNSView: NSTextView {
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     AppAppearance.update(appearance: effectiveAppearance)
+  }
+
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    super.viewWillMove(toWindow: newWindow)
+    if newWindow == nil, textAnimation == .characterStreaming {
+      finishTextAnimation()
+    }
   }
 
   // MARK: - Intrinsic Content Size
@@ -74,15 +90,34 @@ class ParagraphNSView: NSTextView {
       targetWidth = NSScreen.main?.frame.width ?? 800
     }
 
-    guard let textContainer, let layoutManager = textContainer.layoutManager else {
+    let measuredSize = measureSize(fittingWidth: targetWidth)
+    cachedSize = CachedParagraphNSViewSize(size: measuredSize, targetWidth: targetWidth)
+    return measuredSize
+  }
+
+  /// Measures the size required to lay out the current content within `width`.
+  ///
+  /// Uses a dedicated, throwaway layout stack instead of the view's own text container.
+  /// The display container has `widthTracksTextView = true`, so its width follows the
+  /// view's frame width regardless of any `containerSize` we set. When the view is
+  /// measured before it has been given a frame (e.g. mid navigation transition) that
+  /// tracked width is `0`, which yields a zero height and collapses the paragraph. A
+  /// standalone container whose width we set directly always measures correctly.
+  func measureSize(fittingWidth width: CGFloat) -> CGSize {
+    guard let textStorage, textStorage.length > 0, width > 0, width.isFinite else {
       return .zero
     }
-    textContainer.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
-    layoutManager.ensureLayout(for: textContainer)
-    let usedRect = layoutManager.usedRect(for: textContainer)
-    let roundedUpSize = CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
-    cachedSize = CachedParagraphNSViewSize(size: roundedUpSize, targetWidth: targetWidth)
-    return roundedUpSize
+    let measuringTextStorage = NSTextStorage(attributedString: textStorage)
+    let measuringLayoutManager = NSLayoutManager()
+    let measuringContainer = NSTextContainer(size: NSSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+    measuringContainer.lineFragmentPadding = 0
+    measuringContainer.maximumNumberOfLines = 0
+    measuringContainer.lineBreakMode = .byWordWrapping
+    measuringLayoutManager.addTextContainer(measuringContainer)
+    measuringTextStorage.addLayoutManager(measuringLayoutManager)
+    measuringLayoutManager.ensureLayout(for: measuringContainer)
+    let usedRect = measuringLayoutManager.usedRect(for: measuringContainer)
+    return CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
   }
 
   override func layout() {
@@ -95,56 +130,117 @@ class ParagraphNSView: NSTextView {
 
   // MARK: - Content Update
 
-  func setParagraphContents(_ newContents: NSMutableAttributedString, lineSpacing: CGFloat? = nil, animatedByWord: Bool) {
+  func setParagraphContents(
+    _ newContents: NSMutableAttributedString,
+    lineSpacing: CGFloat? = nil,
+    textAnimation: MarkdownRenderConfig.TextAnimation,
+    isStreamComplete: Bool
+  ) {
     AppAppearance.update(appearance: effectiveAppearance)
 
-    guard paragraphContents != newContents || self.lineSpacing != lineSpacing else {
-      return
-    }
-    self.paragraphContents = newContents
-    self.lineSpacing = lineSpacing
-
-    let oldLength = textStorage?.length ?? 0
     let finalString: NSMutableAttributedString
     if lineSpacing != nil {
       finalString = applyLineSpacing(to: newContents, lineSpacing: lineSpacing)
     } else {
       finalString = newContents
     }
+    let previousAttributedText = finalAttributedText
+    let previousText = previousAttributedText.string
+    let contentsChanged = paragraphContents != newContents
+      || self.lineSpacing != lineSpacing
+    let modeChanged = self.textAnimation != textAnimation
+    let completionChanged = self.isStreamComplete != isStreamComplete
+    guard contentsChanged || modeChanged || completionChanged else {
+      return
+    }
 
-    tearDownDisplayLink()
+    if modeChanged {
+      stopCharacterStreaming()
+      activeAnimation = nil
+      tearDownDisplayLink()
+    }
+    self.paragraphContents = newContents
+    self.lineSpacing = lineSpacing
+    self.textAnimation = textAnimation
+    self.isStreamComplete = isStreamComplete
+    finalAttributedText = NSAttributedString(attributedString: finalString)
     invalidateCachedSize()
-    textStorage?.setAttributedString(finalString)
-
     configureAccessibility(for: finalString)
 
-    invalidateIntrinsicContentSize()
-
-    let newContentLength = (textStorage?.length ?? 0) - oldLength
-
-    if animatedByWord, newContentLength > 0 {
-      let newContentRange = NSRange(location: oldLength, length: newContentLength)
-      let wordRanges = finalString.splitIntoWords(withIn: newContentRange)
-      let wordCount = wordRanges.count
-      let delayBetweenWords: Double = ParagraphAnimationConstants.delayBetweenWordsRatio / Double(max(wordCount, 1))
-      let baseStartTime = CACurrentMediaTime()
-      for (index, wordRange) in wordRanges.enumerated() {
-        let animationData = FadeAnimationData(
-          startTime: baseStartTime + Double(index) * delayBetweenWords,
-          duration: Self.animationDuration,
-          range: wordRange
+    switch textAnimation {
+    case .none:
+      stopCharacterStreaming()
+      activeAnimation = nil
+      tearDownDisplayLink()
+      textStorage?.setAttributedString(finalString)
+    case .fade:
+      stopCharacterStreaming()
+      guard contentsChanged || modeChanged else {
+        invalidateIntrinsicContentSize()
+        return
+      }
+      textStorage?.setAttributedString(finalString)
+      let revealPlan = contentsChanged
+        ? ParagraphRevealPlan.appendedText(
+          previousText: previousText,
+          newText: finalString.string
         )
-        activeAnimations.append(animationData)
+        : nil
+      guard let revealPlan else {
+        activeAnimation = nil
+        tearDownDisplayLink()
+        invalidateIntrinsicContentSize()
+        return
       }
-
-      updateTextViewWithCurrentAnimations()
-
-      if fadeAnimationDisplayLink == nil {
-        setUpDisplayLink()
+      let currentTime = CACurrentMediaTime()
+      let previousAnimation = modeChanged ? nil : activeAnimation
+      activeAnimation = FadeAnimationData(
+        plan: revealPlan,
+        startTime: currentTime,
+        previousAnimation: previousAnimation,
+        contentLength: finalString.length
+      )
+      updateTextViewWithCurrentAnimations(at: currentTime)
+      setUpDisplayLink()
+    case .characterStreaming:
+      activeAnimation = nil
+      let currentTime = CACurrentMediaTime()
+      if modeChanged {
+        characterStreamingState.reset()
+        if previousAttributedText.length > 0 {
+          characterStreamingState.update(
+            target: previousAttributedText,
+            isComplete: true,
+            at: currentTime
+          )
+          characterStreamingState.settle()
+        }
       }
-    } else {
-      activeAnimations.removeAll()
+      characterStreamingState.update(
+        target: finalString,
+        isComplete: isStreamComplete,
+        at: currentTime
+      )
+      synchronizeCharacterStreamingText()
+      if characterStreamingTimer == nil {
+        releaseOneCharacter(at: currentTime)
+      }
     }
+
+    invalidateIntrinsicContentSize()
+  }
+
+  func finishTextAnimation() {
+    if let activeAnimation {
+      restoreFinalAttributes(in: activeAnimation.segments.map(\.range))
+      self.activeAnimation = nil
+    }
+    if textAnimation == .characterStreaming {
+      characterStreamingState.settle()
+      synchronizeCharacterStreamingText()
+      stopCharacterStreaming()
+    }
+    tearDownDisplayLink()
   }
 
   // MARK: - Line Spacing
@@ -220,71 +316,148 @@ class ParagraphNSView: NSTextView {
     }
   }
 
-  // MARK: - Fade Animation
+  // MARK: - Text Animation
 
-  @objc private func updateFadeAnimation() {
+  @objc private func updateTextAnimation() {
     let currentTime = CACurrentMediaTime()
-    var completedAnimations: [UUID] = []
-
-    updateTextViewWithCurrentAnimations()
-
-    for animation in activeAnimations {
-      let elapsed = currentTime - animation.startTime
-      let progress = elapsed / animation.duration
-      if progress >= 1.0 {
-        completedAnimations.append(animation.id)
-      }
-    }
-    activeAnimations.removeAll { completedAnimations.contains($0.id) }
-
-    if activeAnimations.isEmpty {
+    switch textAnimation {
+    case .none:
       tearDownDisplayLink()
+    case .fade:
+      guard let activeAnimation else {
+        tearDownDisplayLink()
+        return
+      }
+      updateTextViewWithCurrentAnimations(at: currentTime)
+      if currentTime >= activeAnimation.endTime {
+        self.activeAnimation = nil
+        tearDownDisplayLink()
+      }
+    case .characterStreaming:
+      updateCharacterStreamingAnimations(at: currentTime)
+      if characterStreamingState.activeAnimations.isEmpty {
+        tearDownDisplayLink()
+      }
     }
   }
 
-  private func updateTextViewWithCurrentAnimations() {
+  private func updateTextViewWithCurrentAnimations(at currentTime: CFTimeInterval = CACurrentMediaTime()) {
+    guard let activeAnimation else { return }
     guard let textStorage else { return }
-    let currentTime = CACurrentMediaTime()
 
     textStorage.beginEditing()
     defer { textStorage.endEditing() }
 
-    for animation in activeAnimations {
-      guard animation.range.location + animation.range.length <= textStorage.length else {
+    for segment in activeAnimation.segments {
+      guard NSMaxRange(segment.range) <= textStorage.length else {
         continue
       }
-      let elapsed = currentTime - animation.startTime
-      let animatedAlpha: CGFloat
+      let elapsed = currentTime - segment.startTime
+      let progress = min(max(elapsed / ParagraphAnimationConstants.fadeInDuration, 0), 1)
+      applyRevealProgress(paragraphEaseOut(progress), to: segment.range)
+    }
+  }
 
-      if elapsed < 0 {
-        animatedAlpha = 0.0
-      } else {
-        let progress = min(max(elapsed / animation.duration, 0.0), 1.0)
-        let easedProgress = paragraphEaseOut(progress)
-        animatedAlpha = easedProgress
-      }
+  private func applyRevealProgress(_ progress: CGFloat, to range: NSRange) {
+    guard let textStorage else { return }
+    let defaultColor = NSColor(Color.Theme.Foreground.Primary.Primary750)
+    finalAttributedText.enumerateAttributes(in: range, options: []) { attributes, attributeRange, _ in
+      var attributes = attributes
+      let baseColor = (attributes[.foregroundColor] as? NSColor) ?? defaultColor
+      attributes[.foregroundColor] = baseColor.withAlphaComponent(
+        baseColor.alphaComponent * progress
+      )
+      textStorage.setAttributes(attributes, range: attributeRange)
+    }
+  }
 
-      let defaultColor = NSColor(Color.Theme.Foreground.Primary.Primary750)
-      textStorage.enumerateAttribute(.foregroundColor, in: animation.range, options: []) { value, range, _ in
-        let baseColor = (value as? NSColor) ?? defaultColor
-        textStorage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(animatedAlpha), range: range)
+  private func restoreFinalAttributes(in ranges: [NSRange]) {
+    guard let textStorage else { return }
+    textStorage.beginEditing()
+    defer { textStorage.endEditing() }
+    for range in ranges where NSMaxRange(range) <= finalAttributedText.length {
+      finalAttributedText.enumerateAttributes(in: range, options: []) { attributes, attributeRange, _ in
+        textStorage.setAttributes(attributes, range: attributeRange)
       }
     }
   }
 
+  private func releaseOneCharacter(
+    at currentTime: CFTimeInterval = CACurrentMediaTime()
+  ) {
+    guard textAnimation == .characterStreaming else {
+      return
+    }
+    if characterStreamingState.releaseNext(at: currentTime) != nil {
+      synchronizeCharacterStreamingText()
+      updateCharacterStreamingAnimations(at: currentTime)
+      setUpDisplayLink()
+    }
+    scheduleNextCharacterRelease()
+  }
+
+  private func synchronizeCharacterStreamingText() {
+    textStorage?.setAttributedString(characterStreamingState.visibleAttributedText)
+    invalidateCachedSize()
+    invalidateIntrinsicContentSize()
+  }
+
+  private func scheduleNextCharacterRelease() {
+    guard textAnimation == .characterStreaming,
+          characterStreamingState.hasPendingGrapheme,
+          characterStreamingTimer == nil else {
+      return
+    }
+
+    let timer = Timer(
+      timeInterval: characterStreamingState.releaseDelay(
+        at: CACurrentMediaTime()
+      ),
+      repeats: false
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.characterStreamingTimer = nil
+      self.releaseOneCharacter()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    characterStreamingTimer = timer
+  }
+
+  private func updateCharacterStreamingAnimations(at currentTime: CFTimeInterval) {
+    characterStreamingState.pruneAnimations(at: currentTime)
+    let animations = characterStreamingState.activeAnimations
+    characterStreamingLayoutManager?.updateAnimations(
+      animations,
+      at: currentTime
+    )
+  }
+
+  private func stopCharacterStreaming() {
+    characterStreamingTimer?.invalidate()
+    characterStreamingTimer = nil
+    characterStreamingLayoutManager?.clearAnimations()
+  }
+
+  private var characterStreamingLayoutManager: CharacterStreamingLayoutManager? {
+    layoutManager as? CharacterStreamingLayoutManager
+  }
+
   private func setUpDisplayLink() {
+    guard textAnimationDisplayLink == nil else {
+      return
+    }
     let link = displayLink(
       target: self,
-      selector: #selector(updateFadeAnimation)
+      selector: #selector(updateTextAnimation)
     )
     link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
     link.add(to: .main, forMode: .common)
-    fadeAnimationDisplayLink = link
+    textAnimationDisplayLink = link
   }
 
   private func tearDownDisplayLink() {
-    fadeAnimationDisplayLink?.invalidate()
-    fadeAnimationDisplayLink = nil
+    textAnimationDisplayLink?.invalidate()
+    textAnimationDisplayLink = nil
   }
 
   private func invalidateCachedSize() {
@@ -321,47 +494,65 @@ class ParagraphNSView: NSTextView {
     let clampedRange = NSIntersectionRange(selectedRange, NSRange(location: 0, length: textStorage.length))
     let selectedText = textStorage.attributedSubstring(from: clampedRange).string
 
-    let menu = NSMenu()
+    // Start from the native context menu so system items (Copy, Look Up,
+    // Translate, Share, Services, …) are preserved, then inject the configured
+    // groups at the top, above the system items.
+    let menu = super.menu(for: event) ?? NSMenu()
 
-    // Add standard Copy item
-    let copyItem = NSMenuItem(title: "Copy", action: #selector(copy(_:)), keyEquivalent: "c")
-    menu.addItem(copyItem)
-    menu.addItem(.separator())
-
-    // Add custom groups
+    var injected: [NSMenuItem] = []
+    // The built-in "Select more text" group (when enabled) is prepended by
+    // `MarkdownRenderConfig.resolvedTextContextMenu`, so it renders first.
     for group in textContextMenu.menuGroups {
       if group.displayInline {
         for item in group.items {
-          let menuItem = NSMenuItem(title: item.title, action: #selector(contextMenuItemTapped(_:)), keyEquivalent: "")
-          menuItem.representedObject = ContextMenuAction(id: item.id, selectedText: selectedText)
-          menuItem.target = self
-          menu.addItem(menuItem)
+          injected.append(makeMenuItem(for: item, selectedText: selectedText))
         }
       } else {
         let submenu = NSMenu(title: group.title ?? "")
         for item in group.items {
-          let menuItem = NSMenuItem(title: item.title, action: #selector(contextMenuItemTapped(_:)), keyEquivalent: "")
-          menuItem.representedObject = ContextMenuAction(id: item.id, selectedText: selectedText)
-          menuItem.target = self
-          submenu.addItem(menuItem)
+          submenu.addItem(makeMenuItem(for: item, selectedText: selectedText))
         }
         let submenuItem = NSMenuItem(title: group.title ?? "", action: nil, keyEquivalent: "")
         submenuItem.submenu = submenu
-        menu.addItem(submenuItem)
+        injected.append(submenuItem)
       }
-      menu.addItem(.separator())
+      injected.append(.separator())
     }
 
-    // Notify controller of menu appearance
+    // Insert the block in order at the top; its trailing separator divides it
+    // from the native items (Copy, …) that follow.
+    var insertAt = 0
+    for item in injected {
+      menu.insertItem(item, at: insertAt)
+      insertAt += 1
+    }
+
+    // Notify controller of menu appearance (excluding the built-in item)
     if let markdownController {
       for group in textContextMenu.menuGroups {
-        for item in group.items {
+        for item in group.items where item.id != TextSelectionConfig.selectMoreItemID {
           markdownController.onContextMenuAppear(id: item.id, selectedContent: selectedText)
         }
       }
     }
 
     return menu
+  }
+
+  private func makeMenuItem(for item: TextContextMenuItem, selectedText: String) -> NSMenuItem {
+    if item.id == TextSelectionConfig.selectMoreItemID {
+      let menuItem = NSMenuItem(title: item.title, action: #selector(selectMoreTextTapped), keyEquivalent: "")
+      menuItem.target = self
+      return menuItem
+    }
+    let menuItem = NSMenuItem(title: item.title, action: #selector(contextMenuItemTapped(_:)), keyEquivalent: "")
+    menuItem.representedObject = ContextMenuAction(id: item.id, selectedText: selectedText)
+    menuItem.target = self
+    return menuItem
+  }
+
+  @objc private func selectMoreTextTapped() {
+    markdownController?.requestTextSelection()
   }
 
   @objc private func contextMenuItemTapped(_ sender: NSMenuItem) {

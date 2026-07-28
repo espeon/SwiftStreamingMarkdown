@@ -10,6 +10,9 @@ struct ParagraphView: NSViewRepresentable {
   @Environment(\.openURL) var openURL
   @Environment(\.markdownConfig) var config: MarkdownRenderConfig
   @Environment(\.markdownController) var markdownController: MarkdownController?
+  @Environment(\.accessibilityReduceMotion) var reduceMotion
+  @Environment(\.isMarkdownStreamComplete) var isStreamComplete
+  @Environment(\.isMarkdownStreamingTailBranch) var isStreamingTailBranch
 
   var contents: NSMutableAttributedString
   var lineSpacing: CGFloat?
@@ -20,29 +23,43 @@ struct ParagraphView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> ParagraphNSView {
     let openUrlFunction = openURL.callAsFunction(_:)
-    let view = ParagraphViewCache.shared.createOrReuseView(contents: contents, lineSpacing: lineSpacing)
+    // Do not reuse paragraph views on macOS. Reused NSTextView instances can retain
+    // stale attachment subviews (e.g. LaTeX views vended by LatexViewProvider) from a
+    // previously displayed document, which then render at the wrong positions. Each
+    // paragraph gets its own view instead.
+    let view = ParagraphNSView(
+      characterStreaming: config.textAnimation == .characterStreaming
+    )
     view.onUrlTap = openUrlFunction
-    view.setParagraphContents(contents, lineSpacing: lineSpacing, animatedByWord: false)
-    view.setTextContextMenu(config.textContextMenu)
+    view.setParagraphContents(
+      contents,
+      lineSpacing: lineSpacing,
+      textAnimation: resolvedAnimation,
+      isStreamComplete: paragraphStreamComplete
+    )
+    view.setTextContextMenu(config.resolvedTextContextMenu)
     view.setMarkdownController(markdownController)
-
-    if config.shouldAnimateText {
-      view.alphaValue = 0
-      NSAnimationContext.runAnimationGroup { ctx in
-        ctx.duration = ParagraphNSView.animationDuration
-        view.animator().alphaValue = 1
-      }
-    }
 
     return view
   }
 
   func updateNSView(_ view: ParagraphNSView, context: Context) {
     if view.paragraphContents != contents || view.lineSpacing != lineSpacing {
-      let shouldAnimate = view.window != nil && config.shouldAnimateText
-      view.setParagraphContents(contents, lineSpacing: lineSpacing, animatedByWord: shouldAnimate)
+      view.setParagraphContents(
+        contents,
+        lineSpacing: lineSpacing,
+        textAnimation: view.window == nil ? .none : resolvedAnimation,
+        isStreamComplete: paragraphStreamComplete
+      )
+    } else {
+      view.setParagraphContents(
+        contents,
+        lineSpacing: lineSpacing,
+        textAnimation: resolvedAnimation,
+        isStreamComplete: paragraphStreamComplete
+      )
     }
-    view.setTextContextMenu(config.textContextMenu)
+    view.setTextContextMenu(config.resolvedTextContextMenu)
     view.setMarkdownController(markdownController)
   }
 
@@ -57,36 +74,50 @@ struct ParagraphView: NSViewRepresentable {
       context.coordinator.lastLineSpacing = lineSpacing
     }
 
-    let cacheKey = (width * 10).rounded() / 10
+    let cacheKey = ParagraphSizeCacheKey(
+      width: (width * 10).rounded() / 10,
+      visibleUTF16Length: nsView.textStorage?.length ?? 0
+    )
+    context.coordinator.updateVisibleUTF16Length(
+      nsView.textStorage?.length ?? 0
+    )
 
     if let cachedSize = context.coordinator.sizeCache[cacheKey] {
       return cachedSize
     }
 
-    guard let textContainer = nsView.textContainer,
-          let layoutManager = textContainer.layoutManager else {
-      return nil
-    }
-
-    textContainer.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-    layoutManager.ensureLayout(for: textContainer)
-    let usedRect = layoutManager.usedRect(for: textContainer)
-    let calculatedSize = CGSize(width: usedRect.width.rounded(.up), height: usedRect.height.rounded(.up))
+    let calculatedSize = nsView.measureSize(fittingWidth: width)
 
     context.coordinator.sizeCache[cacheKey] = calculatedSize
     return calculatedSize
   }
 
   class Coordinator {
-    var sizeCache: [CGFloat: CGSize] = [:]
+    var sizeCache: [ParagraphSizeCacheKey: CGSize] = [:]
     var lastContents: NSMutableAttributedString?
     var lastLineSpacing: CGFloat?
+    private(set) var lastVisibleUTF16Length: Int?
+
+    func updateVisibleUTF16Length(_ length: Int) {
+      guard lastVisibleUTF16Length != length else { return }
+      sizeCache.removeAll()
+      lastVisibleUTF16Length = length
+    }
+  }
+
+  private var resolvedAnimation: MarkdownRenderConfig.TextAnimation {
+    resolvedTextAnimation(config.textAnimation, reduceMotion: reduceMotion)
+  }
+
+  private var paragraphStreamComplete: Bool {
+    isStreamComplete || !isStreamingTailBranch
   }
 }
 
 extension ParagraphView: Equatable {
   static func == (lhs: ParagraphView, rhs: ParagraphView) -> Bool {
-    lhs.contents.isEqual(to: rhs.contents) && lhs.lineSpacing == rhs.lineSpacing
+    lhs.contents.isEqual(to: rhs.contents)
+      && lhs.lineSpacing == rhs.lineSpacing
   }
 }
 #endif

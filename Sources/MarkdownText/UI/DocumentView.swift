@@ -35,16 +35,27 @@ public struct DocumentView: View {
 
   public var body: some View {
     BlockView(renderables: renderableDocument.renderables)
+    .id(config.textAnimation)
     .environment(\.markdownConfig, config)
     .environment(\.markdownController, controller)
     .task {
-      controller.onAppear(markdown: renderableDocument)
+      await controller.onAppear(markdown: renderableDocument)
     }
     .onChange(of: renderableDocument, perform: { md in
       controller.onChange(markdown: md)
     })
     .onDisappear {
-      controller.onDisappear()
+      Task {
+        await controller.onDisappear()
+      }
+    }
+    .sheet(isPresented: $controller.isTextSelectionRequested) {
+      TextSelectionView(
+        text: renderableDocument.plainText,
+        backgroundColor: config.textSelectionConfig.backgroundColor ?? Color.Theme.Background.Page.Chat.Flat
+      ) {
+        controller.isTextSelectionRequested = false
+      }
     }
   }
 }
@@ -55,6 +66,10 @@ extension EnvironmentValues {
   /// The shared controller used by descendant Markdown views to route
   /// table/context-menu events to the configured `MarkdownListener`.
   @Entry public var markdownController: MarkdownController?
+  /// Whether the current streamed source has finished producing snapshots.
+  @Entry var isMarkdownStreamComplete = true
+  /// Whether this branch ends at the only paragraph whose final grapheme may still grow.
+  @Entry var isMarkdownStreamingTailBranch = true
 }
 
 #if DEBUG

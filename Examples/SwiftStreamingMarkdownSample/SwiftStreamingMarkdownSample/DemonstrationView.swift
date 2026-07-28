@@ -10,6 +10,7 @@ struct DemonstrationView: View {
   @AppStorage(SampleSettings.preferStreamedMarkdownKey) private var preferStreamedMarkdown = true
   @AppStorage(SampleSettings.appearanceModeKey) private var appearanceMode = AppearanceMode.device
   @AppStorage(SampleSettings.markdownThemeKey) private var markdownTheme = SampleMarkdownTheme.automatic
+  @AppStorage(SampleSettings.streamingTextAnimationKey) private var streamingTextAnimation = SampleStreamingTextAnimation.characterStreaming
 
   let demonstration: Demonstration
   let markdownText: String
@@ -29,14 +30,22 @@ struct DemonstrationView: View {
           if preferStreamedMarkdown {
             StreamedMarkdownView(
               source: viewModel,
-              config: demonstration.renderConfig(theme: markdownTheme, isStreaming: true),
+              config: demonstration.renderConfig(
+                theme: markdownTheme,
+                isStreaming: true,
+                streamingTextAnimation: streamingTextAnimation
+              ),
               listener: listener
             )
             .id(streamedContentID)
           } else {
             MarkdownView(
               text: markdownText,
-              config: demonstration.renderConfig(theme: markdownTheme, isStreaming: false),
+              config: demonstration.renderConfig(
+                theme: markdownTheme,
+                isStreaming: false,
+                streamingTextAnimation: streamingTextAnimation
+              ),
               listener: listener
             )
             .id(staticContentID)
@@ -47,7 +56,7 @@ struct DemonstrationView: View {
           }
         }
         .padding(.horizontal, 28)
-        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: contentMaxWidth, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 16)
         .padding(.bottom, viewModel.isControlDrawerPresented ? 190 : 58)
@@ -106,12 +115,26 @@ struct DemonstrationView: View {
               Text(mode.displayName).tag(mode)
             }
           }
+
+          Picker("Streaming Text", selection: $streamingTextAnimation) {
+            ForEach(SampleStreamingTextAnimation.allCases) { animation in
+              Text(animation.displayName).tag(animation)
+            }
+          }
         } label: {
           Image(systemName: "circle.righthalf.filled")
             .accessibilityLabel("Appearance")
         }
       }
     }
+  }
+
+  private var contentMaxWidth: CGFloat {
+    #if os(macOS)
+    1_040
+    #else
+    760
+    #endif
   }
 
   private var streamedContentID: String {
